@@ -5,7 +5,7 @@ Una herramienta de línea de comandos estilo `neofetch`/`fastfetch` para macOS: 
 ```
             /             alejandro@Alejandros-MacBook-Pro-M4
            |              -----------------------------------
-       ########           OS: macOS 26.5 Tahoe arm64 (25F71)
+       ########           OS: macOS 26.5 Tahoe arm64 (xxxx)
      #########            Host: Alejandros-MacBook-Pro-M4
    ###########            Kernel: Darwin 24.4.0
   ############            Uptime: 3 horas, 24 mins
@@ -26,7 +26,7 @@ Una herramienta de línea de comandos estilo `neofetch`/`fastfetch` para macOS: 
 ## Instalación
 
 ```bash
-brew tap TU_USUARIO/mfetch
+brew tap alejandroceo/mfetch
 brew install mfetch
 ```
 
@@ -41,7 +41,7 @@ echo "mfetch" >> ~/.zshrc
 source ~/.zshrc
 ```
 
-A partir de ahí, cada pestaña/ventana nueva de terminal mostrará el resumen automáticamente, igual que en la captura de Kali + neofetch + lolcat.
+A partir de ahí, cada pestaña/ventana nueva de terminal mostrará el resumen automáticamente, neofetch + lolcat.
 
 Si usas iTerm2 con varias pestañas seguido y el output te resulta repetitivo, puedes condicionarlo a que solo se muestre en la primera shell interactiva del día, o quitar la línea cuando quieras silenciarlo.
 
@@ -67,7 +67,7 @@ No depende de `brew` ni de `system_profiler` (ambos lentos de invocar). Cuenta l
 
 ```bash
 brew uninstall mfetch
-brew untap TU_USUARIO/mfetch
+brew untap alejandroceo/mfetch
 ```
 
 ## Licencia
