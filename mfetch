@@ -1,0 +1,306 @@
+#!/usr/bin/env bash
+#
+# mfetch — Informacion del sistema para macOS, estilo neofetch.
+# https://github.com/TU_USUARIO/mfetch
+#
+# MIT License
+
+set -uo pipefail
+
+VERSION="2.0.0"
+
+# ---------- Comprobacion de plataforma ----------
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "mfetch solo es compatible con macOS." >&2
+  exit 1
+fi
+
+# ---------- Flags ----------
+USE_COLOR=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-color) USE_COLOR=0 ;;
+    -v|--version) echo "mfetch $VERSION"; exit 0 ;;
+    -h|--help)
+      cat <<EOF
+mfetch $VERSION
+Uso: mfetch [opciones]
+
+Opciones:
+  --no-color     Desactiva el color de salida
+  -v, --version  Muestra la version
+  -h, --help     Muestra esta ayuda
+
+Tip: agrega "mfetch" a tu ~/.zshrc para que se ejecute
+cada vez que abras una terminal nueva.
+EOF
+      exit 0
+      ;;
+  esac
+done
+[[ -n "${NO_COLOR:-}" ]] && USE_COLOR=0
+
+# ---------- Colores ----------
+if [[ "$USE_COLOR" -eq 1 ]]; then
+  RESET='\033[0m'; BOLD='\033[1m'
+  C_GREEN='\033[38;5;112m'; C_YELLOW='\033[38;5;220m'; C_ORANGE='\033[38;5;208m'
+  C_RED='\033[38;5;203m'; C_PURPLE='\033[38;5;176m'; C_BLUE='\033[38;5;75m'
+  C_CYAN='\033[38;5;80m'; C_GRAY='\033[38;5;245m'; C_WHITE='\033[38;5;255m'
+else
+  RESET=''; BOLD=''
+  C_GREEN=''; C_YELLOW=''; C_ORANGE=''; C_RED=''; C_PURPLE=''
+  C_BLUE=''; C_CYAN=''; C_GRAY=''; C_WHITE=''
+fi
+
+LABEL_COLOR="$C_CYAN"
+VALUE_COLOR="$C_WHITE"
+
+# ---------- Logo (manzana ASCII, estilo arcoiris clasico de Apple) ----------
+LOGO_WIDTH=24
+LOGO=(
+"            /           "
+"           |            "
+"       ########         "
+"     #########          "
+"   ###########          "
+"  ############          "
+"  #############         "
+" ###################### "
+"  ####################  "
+"  ####################  "
+"   ##################   "
+"     ##############     "
+"       ##########       "
+)
+LOGO_COLORS=(
+  "$C_GREEN" "$C_GREEN"
+  "$C_GREEN" "$C_GREEN"
+  "$C_YELLOW" "$C_YELLOW"
+  "$C_ORANGE" "$C_ORANGE"
+  "$C_RED" "$C_RED"
+  "$C_PURPLE" "$C_PURPLE"
+  "$C_BLUE"
+)
+
+# ---------- Recoleccion de datos ----------
+get_os_codename() {
+  case "$1" in
+    26) echo "Tahoe" ;;
+    15) echo "Sequoia" ;;
+    14) echo "Sonoma" ;;
+    13) echo "Ventura" ;;
+    12) echo "Monterey" ;;
+    11) echo "Big Sur" ;;
+    10) echo "Catalina" ;;
+    *)  echo "" ;;
+  esac
+}
+
+get_os() {
+  local version build major codename arch
+  version=$(sw_vers -productVersion 2>/dev/null)
+  build=$(sw_vers -buildVersion 2>/dev/null)
+  major="${version%%.*}"
+  codename=$(get_os_codename "$major")
+  arch=$(uname -m 2>/dev/null)
+  if [[ -n "$codename" ]]; then
+    echo "macOS ${version} ${codename} ${arch} (${build})"
+  else
+    echo "macOS ${version} ${arch} (${build})"
+  fi
+}
+
+get_host() {
+  scutil --get ComputerName 2>/dev/null || hostname
+}
+
+get_local_hostname() {
+  scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || hostname
+}
+
+get_kernel() {
+  echo "Darwin $(uname -r)"
+}
+
+get_uptime() {
+  local boot_epoch now diff days hours minutes out
+  boot_epoch=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+  now=$(date +%s)
+  diff=$(( now - boot_epoch ))
+  days=$(( diff / 86400 ))
+  hours=$(( (diff % 86400) / 3600 ))
+  minutes=$(( (diff % 3600) / 60 ))
+  if (( days > 0 )); then
+    out="${days} dias, ${hours} horas, ${minutes} mins"
+  elif (( hours > 0 )); then
+    out="${hours} horas, ${minutes} mins"
+  else
+    out="${minutes} mins"
+  fi
+  echo "$out"
+}
+
+get_shell() {
+  local shell_name version
+  shell_name=$(basename "${SHELL:-unknown}")
+  case "$shell_name" in
+    zsh)  version=$(zsh --version 2>/dev/null | awk '{print $2}') ;;
+    bash) version=$(bash --version 2>/dev/null | head -1 | awk '{print $4}') ;;
+    *)    version="" ;;
+  esac
+  echo "${shell_name} ${version}"
+}
+
+get_cpu() {
+  local brand cores
+  brand=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)
+  [[ -z "$brand" ]] && brand="Apple Silicon"
+  cores=$(sysctl -n hw.ncpu 2>/dev/null)
+  echo "${brand} (${cores})"
+}
+
+get_memory_info() {
+  local page_size total_bytes vm pages_active pages_wired pages_compressed used_bytes
+  page_size=$(sysctl -n hw.pagesize 2>/dev/null)
+  total_bytes=$(sysctl -n hw.memsize 2>/dev/null)
+  vm=$(vm_stat 2>/dev/null)
+  pages_active=$(echo "$vm" | awk '/Pages active/ {print $3}' | tr -d '.')
+  pages_wired=$(echo "$vm" | awk '/Pages wired down/ {print $4}' | tr -d '.')
+  pages_compressed=$(echo "$vm" | awk '/occupied by compressor/ {print $5}' | tr -d '.')
+  pages_active=${pages_active:-0}; pages_wired=${pages_wired:-0}; pages_compressed=${pages_compressed:-0}
+  used_bytes=$(( (pages_active + pages_wired + pages_compressed) * page_size ))
+  local total_gb used_gb percent
+  total_gb=$(awk -v b="$total_bytes" 'BEGIN{printf "%.1f", b/1073741824}')
+  used_gb=$(awk -v b="$used_bytes" 'BEGIN{printf "%.1f", b/1073741824}')
+  percent=$(awk -v u="$used_bytes" -v t="$total_bytes" 'BEGIN{ if (t>0) printf "%.0f", (u/t)*100; else print 0 }')
+  echo "${percent}|${used_gb}|${total_gb}"
+}
+
+get_disk_info() {
+  local line total_kb used_kb percent total_gb used_gb
+  line=$(df -k / | tail -1)
+  total_kb=$(echo "$line" | awk '{print $2}')
+  used_kb=$(echo "$line" | awk '{print $3}')
+  percent=$(echo "$line" | awk '{print $5}' | tr -d '%')
+  total_gb=$(awk -v k="$total_kb" 'BEGIN{printf "%.0f", k/1048576}')
+  used_gb=$(awk -v k="$used_kb" 'BEGIN{printf "%.0f", k/1048576}')
+  echo "${percent}|${used_gb}|${total_gb}"
+}
+
+get_battery() {
+  command -v pmset >/dev/null 2>&1 || return 1
+  local output
+  output=$(pmset -g batt 2>/dev/null)
+  echo "$output" | grep -q "InternalBattery" || return 1
+  local percent icon state
+  percent=$(echo "$output" | grep -Eo '[0-9]+%' | head -1 | tr -d '%')
+  icon="bateria"
+  echo "$output" | grep -q "AC Power" && icon="cargando"
+  state=$(echo "$output" | grep -Eo '(charging|charged|discharging)' | head -1)
+  echo "${percent}|${state}"
+}
+
+get_ip() {
+  local iface ip
+  iface=$(route get default 2>/dev/null | awk '/interface:/{print $2}')
+  [[ -z "$iface" ]] && iface="en0"
+  ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
+  echo "${ip:-N/A}"
+}
+
+# Cuenta paquetes de Homebrew sin invocar el binario "brew" (mucho mas rapido)
+get_packages() {
+  local brew_path prefix formulae=0 casks=0
+  brew_path=$(command -v brew 2>/dev/null)
+  if [[ -n "$brew_path" ]]; then
+    prefix=$(cd "$(dirname "$brew_path")/.." 2>/dev/null && pwd)
+    if [[ -n "$prefix" ]]; then
+      [[ -d "$prefix/Cellar" ]] && formulae=$(ls -1 "$prefix/Cellar" 2>/dev/null | wc -l | tr -d ' ')
+      [[ -d "$prefix/Caskroom" ]] && casks=$(ls -1 "$prefix/Caskroom" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+  fi
+  echo "${formulae}|${casks}"
+}
+
+# ---------- Paleta de colores (estilo neofetch) ----------
+print_palette() {
+  [[ "$USE_COLOR" -eq 0 ]] && return 0
+  local codes=(40 41 42 43 44 45 46 47)
+  local pad=""
+  local i
+  for (( i=0; i<LOGO_WIDTH+2; i++ )); do pad+=" "; done
+  printf "%s" "$pad"
+  for c in "${codes[@]}"; do
+    printf "\033[%sm  \033[0m" "$c"
+  done
+  printf "\n"
+}
+
+# ---------- Main ----------
+main() {
+  local user host_short os host kernel uptime_str shell_info term cpu ip
+  local mem_percent mem_used mem_total
+  local disk_percent disk_used disk_total
+  local formulae casks
+  local battery_info=""
+
+  user="${USER:-$(whoami)}"
+  host_short=$(get_local_hostname)
+  os=$(get_os)
+  host=$(get_host)
+  kernel=$(get_kernel)
+  uptime_str=$(get_uptime)
+  shell_info=$(get_shell)
+  term="${TERM_PROGRAM:-desconocida}"
+  cpu=$(get_cpu)
+  ip=$(get_ip)
+
+  IFS='|' read -r mem_percent mem_used mem_total <<< "$(get_memory_info)"
+  IFS='|' read -r disk_percent disk_used disk_total <<< "$(get_disk_info)"
+  IFS='|' read -r formulae casks <<< "$(get_packages)"
+
+  local header="${user}@${host_short}"
+  local sep=""
+  local i
+  for (( i=0; i<${#header}; i++ )); do sep+="-"; done
+
+  local INFO=()
+  INFO+=("${BOLD}${VALUE_COLOR}${header}${RESET}")
+  INFO+=("${C_GRAY}${sep}${RESET}")
+  INFO+=("${LABEL_COLOR}OS:${RESET} ${os}")
+  INFO+=("${LABEL_COLOR}Host:${RESET} ${host}")
+  INFO+=("${LABEL_COLOR}Kernel:${RESET} ${kernel}")
+  INFO+=("${LABEL_COLOR}Uptime:${RESET} ${uptime_str}")
+  INFO+=("${LABEL_COLOR}Packages:${RESET} ${formulae} formulas, ${casks} casks (brew)")
+  INFO+=("${LABEL_COLOR}Shell:${RESET} ${shell_info}")
+  INFO+=("${LABEL_COLOR}Terminal:${RESET} ${term}")
+  INFO+=("${LABEL_COLOR}CPU:${RESET} ${cpu}")
+  INFO+=("${LABEL_COLOR}Memory:${RESET} ${mem_used}GiB / ${mem_total}GiB (${mem_percent}%)")
+  INFO+=("${LABEL_COLOR}Disk (/):${RESET} ${disk_used}GiB / ${disk_total}GiB (${disk_percent}%)")
+
+  if battery_info=$(get_battery); then
+    IFS='|' read -r batt_percent batt_state <<< "$battery_info"
+    INFO+=("${LABEL_COLOR}Battery:${RESET} ${batt_percent}% (${batt_state})")
+  fi
+
+  INFO+=("${LABEL_COLOR}Local IP:${RESET} ${ip}")
+
+  local n=${#LOGO[@]}
+  local m=${#INFO[@]}
+  local max=$n
+  (( m > max )) && max=$m
+
+  echo ""
+  for (( i=0; i<max; i++ )); do
+    local logo_line="${LOGO[$i]:-}"
+    [[ -z "$logo_line" ]] && logo_line=$(printf "%${LOGO_WIDTH}s" "")
+    local lcolor="${LOGO_COLORS[$i]:-$RESET}"
+    local info_line="${INFO[$i]:-}"
+    printf "%b%-${LOGO_WIDTH}s%b  %b\n" "$lcolor" "$logo_line" "$RESET" "$info_line"
+  done
+  echo ""
+  print_palette
+  echo ""
+}
+
+main
