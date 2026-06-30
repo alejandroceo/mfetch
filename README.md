@@ -27,7 +27,7 @@ Una herramienta de línea de comandos estilo `neofetch`/`fastfetch` para macOS: 
 
 ```bash
 brew install alejandroceo/mfetch/mfetch
-brew install mfetch
+mfetch
 ```
 
 Al instalar, Homebrew te mostrará un mensaje (caveat) con el siguiente paso.
