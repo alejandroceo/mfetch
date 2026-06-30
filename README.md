@@ -26,7 +26,7 @@ Una herramienta de línea de comandos estilo `neofetch`/`fastfetch` para macOS: 
 ## Instalación
 
 ```bash
-brew tap alejandroceo/mfetch
+brew install alejandroceo/mfetch/mfetch
 brew install mfetch
 ```
 
